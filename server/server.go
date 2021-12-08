@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func ListenAndServe(addr string, handler http.Handler) error {
+func ListenAndServe(addr string) error {
 	return http.ListenAndServe(addr, logRequest(http.DefaultServeMux))
 }
 
