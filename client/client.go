@@ -2,6 +2,7 @@ package client
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"github.com/sidelight-labs/libc/logger"
 	"io/ioutil"
@@ -11,12 +12,21 @@ import (
 )
 
 const (
-	ResponseError = "error calling %s, got status code %d"
 	SkipVerifyEnv = "TLS_SKIP_VERIFY"
 )
 
+type ResponseError struct {
+	Endpoint   string
+	StatusCode int
+}
+
+func (r ResponseError) Error() string {
+	return fmt.Sprintf("error calling %s, got status code %d", r.Endpoint, r.StatusCode)
+}
+
 type Caller interface {
 	Get(string) (string, error)
+	GetWithRetries(string, int) (string, error)
 	Post(string, string) (string, error)
 	SetHeaders(map[string]string)
 }
@@ -24,6 +34,9 @@ type Caller interface {
 type Callout struct {
 	headers map[string]string
 }
+
+// Ensure Callout implements Caller interface
+var _ Caller = &Callout{}
 
 func (c *Callout) SetHeaders(headers map[string]string) {
 	c.headers = headers
@@ -62,7 +75,7 @@ func (c *Callout) Get(endpoint string) (string, error) {
 	defer cleanUp(resp)
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf(ResponseError, endpoint, resp.StatusCode)
+		return "", ResponseError{Endpoint: endpoint, StatusCode: resp.StatusCode}
 	}
 
 	buf, err := ioutil.ReadAll(resp.Body)
@@ -71,6 +84,24 @@ func (c *Callout) Get(endpoint string) (string, error) {
 	}
 
 	return string(buf), nil
+}
+
+func (c *Callout) GetWithRetries(endpoint string, retries int) (string, error) {
+	var err error
+
+	for i := 0; i <= retries; i++ {
+		var response string
+		response, err = c.Get(endpoint)
+		if err == nil {
+			return response, nil
+		}
+
+		if !errors.As(err, &ResponseError{}) {
+			return "", err
+		}
+	}
+
+	return "", logger.Wrap(err, fmt.Sprintf("request failed %d times", retries))
 }
 
 func (c *Callout) Post(endpoint string, body string) (string, error) {
