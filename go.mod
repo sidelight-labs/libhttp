@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/onsi/gomega v1.18.1
 	github.com/sclevine/spec v1.4.0
-	github.com/sidelight-labs/libc v1.1.2
+	github.com/sidelight-labs/libc v1.2.0
 )
 
 require (
