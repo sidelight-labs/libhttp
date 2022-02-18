@@ -35,7 +35,9 @@ type Callout struct {
 var _ Caller = &Callout{}
 
 func New(options ...CalloutOption) *Callout {
-	callout := &Callout{}
+	callout := &Callout{
+		defaultTimeout: defaultTimeout,
+	}
 
 	for _, option := range options {
 		option(callout)
@@ -57,23 +59,15 @@ func (c *Callout) Post(url, body string, options ...RequestOption) ([]byte, erro
 }
 
 func (c *Callout) buildRequestWithOptions(method string, url string, reqBody string, options ...RequestOption) ([]byte, error) {
-	requestOpts := &requestOptions{}
-	for _, option := range options {
-		option(requestOpts)
+	requestOpts := &requestOptions{
+		headers:       c.defaultHeaders,
+		timeout:       c.defaultTimeout,
+		retries:       c.defaultRetries,
+		skipTLSVerify: c.skipTLSVerify,
 	}
 
-	if requestOpts.retries == 0 {
-		requestOpts.retries = c.defaultRetries
-	}
-	if requestOpts.timeout == 0 {
-		if c.defaultTimeout == 0 {
-			requestOpts.timeout = defaultTimeout
-		} else {
-			requestOpts.timeout = c.defaultTimeout
-		}
-	}
-	if requestOpts.skipTLSVerifySet == false {
-		requestOpts.skipTLSVerify = c.skipTLSVerify
+	for _, option := range options {
+		option(requestOpts)
 	}
 
 	httpClient := http.Client{
