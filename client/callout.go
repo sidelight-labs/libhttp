@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -40,8 +41,7 @@ func New(options ...CalloutOption) *Callout {
 
 	return callout
 }
-
-func (c *Callout) Get(url string, options ...RequestOption) ([]byte, error) {
+func (c *Callout) buildRequestWithOptions(method string, url string, reqBody string, options ...RequestOption) ([]byte, error) {
 	getOptions := &requestOptions{}
 	for _, option := range options {
 		option(getOptions)
@@ -51,8 +51,11 @@ func (c *Callout) Get(url string, options ...RequestOption) ([]byte, error) {
 	}
 
 	httpClient := http.Client{}
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	var reqBodyReader io.Reader
+	if reqBody != "" {
+		reqBodyReader = strings.NewReader(reqBody)
+	}
+	req, err := http.NewRequest(method, url, reqBodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
@@ -117,10 +120,14 @@ func (c *Callout) doRequest(req *http.Request, httpClient http.Client, writer io
 	}
 }
 
+func (c *Callout) Get(url string, options ...RequestOption) ([]byte, error) {
+	return c.buildRequestWithOptions(http.MethodGet, url, "", options...)
+}
+
 func (c *Callout) Head(url string, options ...RequestOption) ([]byte, error) {
-	return nil, nil
+	return c.buildRequestWithOptions(http.MethodHead, url, "", options...)
 }
 
 func (c *Callout) Post(url, body string, options ...RequestOption) ([]byte, error) {
-	return nil, nil
+	return c.buildRequestWithOptions(http.MethodPost, url, body, options...)
 }
