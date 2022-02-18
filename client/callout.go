@@ -1,10 +1,12 @@
 package client
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -41,16 +43,52 @@ func New(options ...CalloutOption) *Callout {
 
 	return callout
 }
+
+func (c *Callout) Get(url string, options ...RequestOption) ([]byte, error) {
+	return c.buildRequestWithOptions(http.MethodGet, url, "", options...)
+}
+
+func (c *Callout) Head(url string, options ...RequestOption) ([]byte, error) {
+	return c.buildRequestWithOptions(http.MethodHead, url, "", options...)
+}
+
+func (c *Callout) Post(url, body string, options ...RequestOption) ([]byte, error) {
+	return c.buildRequestWithOptions(http.MethodPost, url, body, options...)
+}
+
 func (c *Callout) buildRequestWithOptions(method string, url string, reqBody string, options ...RequestOption) ([]byte, error) {
-	getOptions := &requestOptions{}
+	requestOpts := &requestOptions{}
 	for _, option := range options {
-		option(getOptions)
-	}
-	if getOptions.retries == 0 {
-		getOptions.retries = c.defaultRetries
+		option(requestOpts)
 	}
 
-	httpClient := http.Client{}
+	if requestOpts.retries == 0 {
+		requestOpts.retries = c.defaultRetries
+	}
+	if requestOpts.timeout == 0 {
+		if c.defaultTimeout == 0 {
+			requestOpts.timeout = defaultTimeout
+		} else {
+			requestOpts.timeout = c.defaultTimeout
+		}
+	}
+	if requestOpts.skipTLSVerifySet == false {
+		requestOpts.skipTLSVerify = c.skipTLSVerify
+	}
+
+	httpClient := http.Client{
+		Timeout: requestOpts.timeout,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout: defaultDialTimeout,
+			}).DialContext,
+			TLSHandshakeTimeout: defaultTLSHandshakeTimeout,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: requestOpts.skipTLSVerify,
+			},
+		},
+	}
+
 	var reqBodyReader io.Reader
 	if reqBody != "" {
 		reqBodyReader = strings.NewReader(reqBody)
@@ -63,21 +101,21 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 	for key, value := range c.defaultHeaders {
 		req.Header.Set(key, value)
 	}
-	for key, value := range getOptions.headers {
+	for key, value := range requestOpts.headers {
 		req.Header.Set(key, value)
 	}
 
 	var statusCode int
 	var body []byte
-	for i := 0; i <= getOptions.retries; i++ {
-		body, statusCode, err = c.doRequest(req, httpClient, getOptions.bodyWriter)
+	for i := 0; i <= requestOpts.retries; i++ {
+		body, statusCode, err = c.doRequest(req, httpClient, requestOpts.bodyWriter)
 		if err != nil {
 			return nil, err
 		}
 
 		if statusCode >= 200 && statusCode < 300 {
-			if getOptions.jsonValue != nil {
-				err = json.Unmarshal(body, getOptions.jsonValue)
+			if requestOpts.jsonValue != nil {
+				err = json.Unmarshal(body, requestOpts.jsonValue)
 				if err != nil {
 					return body, fmt.Errorf("failed to unmarshal response: %w", err)
 				}
@@ -118,16 +156,4 @@ func (c *Callout) doRequest(req *http.Request, httpClient http.Client, writer io
 
 		return body, resp.StatusCode, nil
 	}
-}
-
-func (c *Callout) Get(url string, options ...RequestOption) ([]byte, error) {
-	return c.buildRequestWithOptions(http.MethodGet, url, "", options...)
-}
-
-func (c *Callout) Head(url string, options ...RequestOption) ([]byte, error) {
-	return c.buildRequestWithOptions(http.MethodHead, url, "", options...)
-}
-
-func (c *Callout) Post(url, body string, options ...RequestOption) ([]byte, error) {
-	return c.buildRequestWithOptions(http.MethodPost, url, body, options...)
 }

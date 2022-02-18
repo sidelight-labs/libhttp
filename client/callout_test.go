@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestUnitClient(t *testing.T) {
@@ -20,6 +21,7 @@ func TestUnitClient(t *testing.T) {
 func testClient(t *testing.T, when spec.G, it spec.S) {
 	var (
 		server       *httptest.Server
+		tlsServer    *httptest.Server
 		requestCount int
 	)
 
@@ -34,13 +36,41 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 			switch r.URL.Path {
 			case "/print-request":
 				_ = r.Write(w)
+			case "/echo":
+				if r.Method == http.MethodGet || r.Method == http.MethodHead {
+					value := r.URL.Query().Get("body")
+
+					w.WriteHeader(http.StatusOK)
+					_, _ = fmt.Fprint(w, value)
+				} else if r.Method == http.MethodPost {
+					body, err := ioutil.ReadAll(r.Body)
+					if err != nil {
+						w.WriteHeader(http.StatusInternalServerError)
+						_, _ = fmt.Fprintf(w, "failed to read body: %s", err.Error())
+						return
+					}
+
+					w.WriteHeader(http.StatusOK)
+					_, _ = fmt.Fprint(w, string(body))
+				} else {
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = fmt.Fprintf(w, "Method must be GET, HEAD, or POST")
+				}
+			case "/sleep":
+				duration, err := time.ParseDuration(r.URL.Query().Get("duration"))
+				if err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = fmt.Fprintf(w, "failed to parse duration: %s", err.Error())
+					return
+				}
+
+				time.Sleep(duration)
+
+				w.WriteHeader(http.StatusOK)
+				_, _ = fmt.Fprintf(w, "slept for %v", duration)
 			case "/200":
 				w.WriteHeader(http.StatusOK)
 				_, _ = fmt.Fprintf(w, "200")
-			case "/200Post":
-				w.WriteHeader(http.StatusOK)
-				reqBody, _ := ioutil.ReadAll(r.Body)
-				_,_ = fmt.Fprintf(w, string(reqBody))
 			case "/400":
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = fmt.Fprintf(w, "400")
@@ -54,16 +84,19 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				}
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = fmt.Fprintf(w, "500 on request %d", requestCount)
-			case "/json":
-				w.WriteHeader(http.StatusOK)
-				_, _ = fmt.Fprintf(w, `{"key": "value"}`)
 			}
+		}))
+		tlsServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = r.Write(w)
 		}))
 	})
 
 	it.After(func() {
 		if server != nil {
 			server.Close()
+		}
+		if tlsServer != nil {
+			tlsServer.Close()
 		}
 	})
 
@@ -99,7 +132,7 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 			body, err := callout.Get("this isn't a URL")
 
 			Expect(err).To(HaveOccurred())
-			Expect(err).NotTo(BeAssignableToTypeOf(client.ResponseError{})) // TODO: does this do the right thing?
+			Expect(err).NotTo(BeAssignableToTypeOf(client.ResponseError{}))
 			Expect(body).To(BeEmpty())
 		})
 
@@ -130,7 +163,33 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 		})
 
 		when("WithTimeout", func() {
-			// TODO: add a /sleep endpoint to test server?
+			it("returns an error if the request exceeds the client timeout", func() {
+				timeout := time.Millisecond
+				callout := client.New(client.WithDefaultTimeout(timeout))
+
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
+				_, err := callout.Get(url)
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
+
+			it("returns an error if the request exceeds the request timeout", func() {
+				callout := client.New()
+
+				timeout := time.Millisecond
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
+				_, err := callout.Get(url, client.WithTimeout(timeout))
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
+
+			it("prefers the request timeout to the client timeout", func() {
+				requestTimeout := time.Millisecond
+				clientTimeout := requestTimeout * 100
+
+				callout := client.New(client.WithDefaultTimeout(clientTimeout))
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, requestTimeout*10)
+				_, err := callout.Get(url, client.WithTimeout(requestTimeout))
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
 		})
 
 		when("WithRetries", func() {
@@ -198,7 +257,7 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 			it("unmarshals the response body to the given value", func() {
 				callout := client.New()
 
-				url := server.URL + `/json` // TODO: use query param?
+				url := server.URL + `/echo?body={"key":"value"}`
 				var value struct {
 					Key string
 				}
@@ -223,12 +282,43 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				Expect(buf.String()).To(Equal("200"))
 			})
 		})
+
+		when("SkipTLSVerify", func() {
+			it("does not skip TLS verification by default", func() {
+				callout := client.New()
+
+				_, err := callout.Get(tlsServer.URL)
+				Expect(err).To(HaveOccurred())
+			})
+
+			it("skips TLS verification when set to true on the client", func() {
+				callout := client.New(client.DefaultSkipTLSVerify(true))
+
+				_, err := callout.Get(tlsServer.URL)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			it("skips TLS verification when set to true on the request", func() {
+				callout := client.New()
+
+				_, err := callout.Get(tlsServer.URL, client.SkipTLSVerify(true))
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			it("prefers the value set on the client", func() {
+				callout := client.New(client.DefaultSkipTLSVerify(true))
+
+				_, err := callout.Get(tlsServer.URL, client.SkipTLSVerify(false))
+				Expect(err).To(HaveOccurred())
+			})
+		})
 	})
+
 	when("Post", func() {
 		it("returns the response body", func() {
 			callout := client.New()
 
-			url := server.URL + "/200Post"
+			url := server.URL + "/echo"
 			body, err := callout.Post(url, "foobar")
 
 			Expect(err).NotTo(HaveOccurred())
@@ -255,7 +345,7 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 			body, err := callout.Post("this isn't a URL", "body")
 
 			Expect(err).To(HaveOccurred())
-			Expect(err).NotTo(BeAssignableToTypeOf(client.ResponseError{})) // TODO: does this do the right thing?
+			Expect(err).NotTo(BeAssignableToTypeOf(client.ResponseError{}))
 			Expect(body).To(BeEmpty())
 		})
 
@@ -269,7 +359,7 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				))
 
 				url := server.URL + "/print-request"
-				body, err := callout.Post(url,"body", client.WithHeaders(map[string]string{
+				body, err := callout.Post(url, "body", client.WithHeaders(map[string]string{
 					"header1": "overridden by request",
 					"header4": "value4",
 				}), client.WithHeader(
@@ -286,7 +376,33 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 		})
 
 		when("WithTimeout", func() {
-			// TODO: add a /sleep endpoint to test server?
+			it("returns an error if the request exceeds the client timeout", func() {
+				timeout := time.Millisecond
+				callout := client.New(client.WithDefaultTimeout(timeout))
+
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
+				_, err := callout.Post(url, "")
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
+
+			it("returns an error if the request exceeds the request timeout", func() {
+				callout := client.New()
+
+				timeout := time.Millisecond
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
+				_, err := callout.Post(url, "", client.WithTimeout(timeout))
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
+
+			it("prefers the request timeout to the client timeout", func() {
+				requestTimeout := time.Millisecond
+				clientTimeout := requestTimeout * 100
+
+				callout := client.New(client.WithDefaultTimeout(clientTimeout))
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, requestTimeout*10)
+				_, err := callout.Post(url, "", client.WithTimeout(requestTimeout))
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
 		})
 
 		when("WithRetries", func() {
@@ -294,7 +410,7 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				callout := client.New()
 
 				url := server.URL + "/500forFirstThreeRequestsThen200"
-				body, err := callout.Post(url,"body", client.WithRetries(5))
+				body, err := callout.Post(url, "body", client.WithRetries(5))
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(body)).To(Equal("200 on request 4"))
@@ -304,7 +420,7 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				callout := client.New()
 
 				url := server.URL + "/500forFirstThreeRequestsThen200"
-				body, err := callout.Post(url,"body", client.WithRetries(2))
+				body, err := callout.Post(url, "body", client.WithRetries(2))
 
 				Expect(err).To(MatchError(client.ResponseError{
 					URL:        url,
@@ -318,7 +434,7 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				callout := client.New()
 
 				url := server.URL + "/400"
-				body, err := callout.Post(url,"body", client.WithRetries(2))
+				body, err := callout.Post(url, "body", client.WithRetries(2))
 
 				Expect(err).To(MatchError(client.ResponseError{
 					URL:        url,
@@ -343,7 +459,7 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				callout := client.New(client.WithDefaultRetries(1))
 
 				url := server.URL + "/500forFirstThreeRequestsThen200"
-				body, err := callout.Post(url,"body", client.WithRetries(3))
+				body, err := callout.Post(url, "body", client.WithRetries(3))
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(body)).To(Equal("200 on request 4"))
@@ -354,11 +470,11 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 			it("unmarshals the response body to the given value", func() {
 				callout := client.New()
 
-				url := server.URL + `/json` // TODO: use query param?
+				url := server.URL + `/echo`
 				var value struct {
 					Key string
 				}
-				body, err := callout.Post(url,"body", client.UnmarshalJSONBody(&value))
+				body, err := callout.Post(url, `{"key": "value"}`, client.UnmarshalJSONBody(&value))
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(body)).To(MatchJSON(`{"key":"value"}`))
@@ -372,15 +488,46 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 
 				url := server.URL + "/200"
 				var buf bytes.Buffer
-				body, err := callout.Post(url,"body", client.WriteBody(&buf))
+				body, err := callout.Post(url, "body", client.WriteBody(&buf))
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(body).To(BeEmpty())
 				Expect(buf.String()).To(Equal("200"))
 			})
 		})
+
+		when("SkipTLSVerify", func() {
+			it("does not skip TLS verification by default", func() {
+				callout := client.New()
+
+				_, err := callout.Post(tlsServer.URL, "")
+				Expect(err).To(HaveOccurred())
+			})
+
+			it("skips TLS verification when set to true on the client", func() {
+				callout := client.New(client.DefaultSkipTLSVerify(true))
+
+				_, err := callout.Post(tlsServer.URL, "")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			it("skips TLS verification when set to true on the request", func() {
+				callout := client.New()
+
+				_, err := callout.Post(tlsServer.URL, "", client.SkipTLSVerify(true))
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			it("prefers the value set on the client", func() {
+				callout := client.New(client.DefaultSkipTLSVerify(true))
+
+				_, err := callout.Post(tlsServer.URL, "", client.SkipTLSVerify(false))
+				Expect(err).To(HaveOccurred())
+			})
+		})
 	})
-	when("Head()", func() {
+
+	when("Head", func() {
 		it("returns the response body", func() {
 			callout := client.New()
 
@@ -409,8 +556,68 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 			body, err := callout.Head("this isn't a URL")
 
 			Expect(err).To(HaveOccurred())
-			Expect(err).NotTo(BeAssignableToTypeOf(client.ResponseError{})) // TODO: does this do the right thing?
+			Expect(err).NotTo(BeAssignableToTypeOf(client.ResponseError{}))
 			Expect(body).To(BeEmpty())
+		})
+
+		when("WithTimeout", func() {
+			it("returns an error if the request exceeds the client timeout", func() {
+				timeout := time.Millisecond
+				callout := client.New(client.WithDefaultTimeout(timeout))
+
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
+				_, err := callout.Head(url)
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
+
+			it("returns an error if the request exceeds the request timeout", func() {
+				callout := client.New()
+
+				timeout := time.Millisecond
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
+				_, err := callout.Head(url, client.WithTimeout(timeout))
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
+
+			it("prefers the request timeout to the client timeout", func() {
+				requestTimeout := time.Millisecond
+				clientTimeout := requestTimeout * 100
+
+				callout := client.New(client.WithDefaultTimeout(clientTimeout))
+				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, requestTimeout*10)
+				_, err := callout.Head(url, client.WithTimeout(requestTimeout))
+				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
+			})
+		})
+
+		when("SkipTLSVerify", func() {
+			it("does not skip TLS verification by default", func() {
+				callout := client.New()
+
+				_, err := callout.Head(tlsServer.URL)
+				Expect(err).To(HaveOccurred())
+			})
+
+			it("skips TLS verification when set to true on the client", func() {
+				callout := client.New(client.DefaultSkipTLSVerify(true))
+
+				_, err := callout.Head(tlsServer.URL)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			it("skips TLS verification when set to true on the request", func() {
+				callout := client.New()
+
+				_, err := callout.Head(tlsServer.URL, client.SkipTLSVerify(true))
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			it("prefers the value set on the client", func() {
+				callout := client.New(client.DefaultSkipTLSVerify(true))
+
+				_, err := callout.Head(tlsServer.URL, client.SkipTLSVerify(false))
+				Expect(err).To(HaveOccurred())
+			})
 		})
 	})
 }

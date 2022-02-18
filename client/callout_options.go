@@ -38,7 +38,7 @@ func WithDefaultRetries(retries int) CalloutOption {
 	}
 }
 
-func WithSkipTLSVerify(skipTLSVerify bool) CalloutOption {
+func DefaultSkipTLSVerify(skipTLSVerify bool) CalloutOption {
 	return func(c *Callout) {
 		c.skipTLSVerify = skipTLSVerify
 	}
