@@ -41,7 +41,7 @@ func New(options ...CalloutOption) *Callout {
 
 	return callout
 }
-func (c *Callout) buildRequestWithOptions(method string, url string, reqBody string, options ...RequestOption)([]byte, error) {
+func (c *Callout) buildRequestWithOptions(method string, url string, reqBody string, options ...RequestOption) ([]byte, error) {
 	getOptions := &requestOptions{}
 	for _, option := range options {
 		option(getOptions)
@@ -52,9 +52,7 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 
 	httpClient := http.Client{}
 	var reqBodyReader io.Reader
-	if reqBody == "" {
-		reqBodyReader = nil
-	} else {
+	if reqBody != "" {
 		reqBodyReader = strings.NewReader(reqBody)
 	}
 	req, err := http.NewRequest(method, url, reqBodyReader)
@@ -127,7 +125,7 @@ func (c *Callout) Get(url string, options ...RequestOption) ([]byte, error) {
 }
 
 func (c *Callout) Head(url string, options ...RequestOption) ([]byte, error) {
-	return c.buildRequestWithOptions(http.MethodPost, url, "", options...)
+	return c.buildRequestWithOptions(http.MethodHead, url, "", options...)
 }
 
 func (c *Callout) Post(url, body string, options ...RequestOption) ([]byte, error) {
