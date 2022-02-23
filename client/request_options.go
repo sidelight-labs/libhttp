@@ -8,13 +8,12 @@ import (
 type RequestOption func(*requestOptions)
 
 type requestOptions struct {
-	headers          map[string]string
-	timeout          time.Duration
-	retries          int
-	skipTLSVerify    bool
-	skipTLSVerifySet bool
-	jsonValue        interface{}
-	bodyWriter       io.Writer
+	headers       map[string]string
+	timeout       time.Duration
+	retries       int
+	skipTLSVerify bool
+	jsonValue     interface{}
+	bodyWriter    io.Writer
 }
 
 func WithHeader(name, value string) RequestOption {
@@ -49,7 +48,6 @@ func WithRetries(retries int) RequestOption {
 func SkipTLSVerify(skip bool) RequestOption {
 	return func(r *requestOptions) {
 		r.skipTLSVerify = skip
-		r.skipTLSVerifySet = true
 	}
 }
 

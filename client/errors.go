@@ -9,5 +9,5 @@ type ResponseError struct {
 }
 
 func (r ResponseError) Error() string {
-	return fmt.Sprintf("error calling %s, got status code %d", r.URL, r.StatusCode)
+	return fmt.Sprintf("error calling %s, got status code %d with body:\n%s", r.URL, r.StatusCode, string(r.Body))
 }
