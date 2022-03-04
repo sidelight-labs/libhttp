@@ -18,6 +18,9 @@ type requestOptions struct {
 
 func WithHeader(name, value string) RequestOption {
 	return func(r *requestOptions) {
+		if r.headers == nil {
+			r.headers = map[string]string{}
+		}
 		r.headers[name] = value
 	}
 }
