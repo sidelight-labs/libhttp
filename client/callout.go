@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	_ "github.com/golang/mock/mockgen/model"
+	"github.com/sidelight-labs/libhttp/tracing"
 	"io"
 	"io/ioutil"
 	"net"
@@ -11,6 +13,9 @@ import (
 	"strings"
 	"time"
 )
+
+//go:generate mockgen -destination=mocks/span.go -package=mocks github.com/sidelight-labs/libhttp/tracing Span
+//go:generate mockgen -destination=mocks/tracer.go -package=mocks github.com/sidelight-labs/libhttp/tracing Tracer
 
 const (
 	defaultTimeout             = time.Minute
@@ -29,6 +34,7 @@ type Callout struct {
 	defaultHeaders map[string]string
 	defaultTimeout time.Duration
 	defaultRetries int
+	defaultTracer  tracing.Tracer
 	skipTLSVerify  bool
 }
 
@@ -76,10 +82,15 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 	requestOpts := &requestOptions{
 		headers: c.defaultHeaders,
 		retries: c.defaultRetries,
+		tracer:  c.defaultTracer,
 	}
 
 	for _, option := range options {
 		option(requestOpts)
+	}
+
+	if requestOpts.tracer != nil {
+		c.defaultTracer = requestOpts.tracer
 	}
 
 	var reqBodyReader io.Reader
@@ -128,6 +139,11 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 }
 
 func (c *Callout) doRequest(req *http.Request, writer io.Writer) ([]byte, int, error) {
+	if c.defaultTracer != nil {
+		span := c.defaultTracer.Trace(req.URL.Path)
+		defer span.End()
+	}
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to make request: %w", err)

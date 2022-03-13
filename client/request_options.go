@@ -1,6 +1,7 @@
 package client
 
 import (
+	"github.com/sidelight-labs/libhttp/tracing"
 	"io"
 )
 
@@ -11,6 +12,13 @@ type requestOptions struct {
 	retries    int
 	jsonValue  interface{}
 	bodyWriter io.Writer
+	tracer     tracing.Tracer
+}
+
+func UnmarshalJSONBody(v interface{}) RequestOption {
+	return func(r *requestOptions) {
+		r.jsonValue = v
+	}
 }
 
 func WithHeader(name, value string) RequestOption {
@@ -39,9 +47,9 @@ func WithRetries(retries int) RequestOption {
 	}
 }
 
-func UnmarshalJSONBody(v interface{}) RequestOption {
+func WithTracer(tracer tracing.Tracer) RequestOption {
 	return func(r *requestOptions) {
-		r.jsonValue = v
+		r.tracer = tracer
 	}
 }
 

@@ -3,10 +3,12 @@ package client_test
 import (
 	"bytes"
 	"fmt"
+	"github.com/golang/mock/gomock"
 	. "github.com/onsi/gomega"
 	"github.com/sclevine/spec"
 	"github.com/sclevine/spec/report"
 	"github.com/sidelight-labs/libhttp/client"
+	"github.com/sidelight-labs/libhttp/client/mocks"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -159,6 +161,51 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				Expect(string(body)).To(ContainSubstring("Header3: value3"))
 				Expect(string(body)).To(ContainSubstring("Header4: value4"))
 				Expect(string(body)).To(ContainSubstring("Header5: value5"))
+			})
+		})
+
+		when("WithTracing", func() {
+			var (
+				mockCtrl   *gomock.Controller
+				mockTracer *mocks.MockTracer
+				mockSpan   *mocks.MockSpan
+				url        string
+			)
+
+			it.Before(func() {
+				mockCtrl = gomock.NewController(t)
+				mockTracer = mocks.NewMockTracer(mockCtrl)
+				mockSpan = mocks.NewMockSpan(mockCtrl)
+				url = fmt.Sprintf("%s/200s", server.URL)
+			})
+
+			it.After(func() {
+				mockCtrl.Finish()
+			})
+
+			it("calls the trace method with the expected argument", func() {
+				mockTracer.EXPECT().Trace("/200s").Return(mockSpan).Times(1)
+				mockSpan.EXPECT().End().Times(1)
+
+				callout := client.New(client.WithDefaultTracer(mockTracer))
+				_, err := callout.Get(url)
+				Expect(err).NotTo(HaveOccurred())
+			})
+			it("doesn't trace when WithTracer is not called", func() {
+				mockTracer.EXPECT().Trace("/200s").Return(mockSpan).Times(0)
+				mockSpan.EXPECT().End().Times(0)
+
+				callout := client.New()
+				_, err := callout.Get(url)
+				Expect(err).NotTo(HaveOccurred())
+			})
+			it("overwrites the default setting", func() {
+				mockTracer.EXPECT().Trace("/200s").Return(mockSpan).Times(1)
+				mockSpan.EXPECT().End().Times(1)
+
+				callout := client.New()
+				_, err := callout.Get(url, client.WithTracer(mockTracer))
+				Expect(err).NotTo(HaveOccurred())
 			})
 		})
 
