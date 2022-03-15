@@ -25,6 +25,7 @@ type Caller interface {
 }
 
 type Callout struct {
+	client         *http.Client
 	defaultHeaders map[string]string
 	defaultTimeout time.Duration
 	defaultRetries int
@@ -41,6 +42,19 @@ func New(options ...CalloutOption) *Callout {
 
 	for _, option := range options {
 		option(callout)
+	}
+
+	callout.client = &http.Client{
+		Timeout: callout.defaultTimeout,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout: defaultDialTimeout,
+			}).DialContext,
+			TLSHandshakeTimeout: defaultTLSHandshakeTimeout,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: callout.skipTLSVerify,
+			},
+		},
 	}
 
 	return callout
@@ -60,27 +74,12 @@ func (c *Callout) Post(url, body string, options ...RequestOption) ([]byte, erro
 
 func (c *Callout) buildRequestWithOptions(method string, url string, reqBody string, options ...RequestOption) ([]byte, error) {
 	requestOpts := &requestOptions{
-		headers:       c.defaultHeaders,
-		timeout:       c.defaultTimeout,
-		retries:       c.defaultRetries,
-		skipTLSVerify: c.skipTLSVerify,
+		headers: c.defaultHeaders,
+		retries: c.defaultRetries,
 	}
 
 	for _, option := range options {
 		option(requestOpts)
-	}
-
-	httpClient := http.Client{
-		Timeout: requestOpts.timeout,
-		Transport: &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout: defaultDialTimeout,
-			}).DialContext,
-			TLSHandshakeTimeout: defaultTLSHandshakeTimeout,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: requestOpts.skipTLSVerify,
-			},
-		},
 	}
 
 	var reqBodyReader io.Reader
@@ -102,7 +101,7 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 	var statusCode int
 	var body []byte
 	for i := 0; i <= requestOpts.retries; i++ {
-		body, statusCode, err = c.doRequest(req, httpClient, requestOpts.bodyWriter)
+		body, statusCode, err = c.doRequest(req, requestOpts.bodyWriter)
 		if err != nil {
 			return nil, err
 		}
@@ -128,8 +127,8 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 	}
 }
 
-func (c *Callout) doRequest(req *http.Request, httpClient http.Client, writer io.Writer) ([]byte, int, error) {
-	resp, err := httpClient.Do(req)
+func (c *Callout) doRequest(req *http.Request, writer io.Writer) ([]byte, int, error) {
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to make request: %w", err)
 	}

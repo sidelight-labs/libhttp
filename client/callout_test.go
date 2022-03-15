@@ -171,25 +171,6 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				_, err := callout.Get(url)
 				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
 			})
-
-			it("returns an error if the request exceeds the request timeout", func() {
-				callout := client.New()
-
-				timeout := time.Millisecond
-				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
-				_, err := callout.Get(url, client.WithTimeout(timeout))
-				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
-			})
-
-			it("prefers the request timeout to the client timeout", func() {
-				requestTimeout := time.Millisecond
-				clientTimeout := requestTimeout * 100
-
-				callout := client.New(client.WithDefaultTimeout(clientTimeout))
-				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, requestTimeout*10)
-				_, err := callout.Get(url, client.WithTimeout(requestTimeout))
-				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
-			})
 		})
 
 		when("WithRetries", func() {
@@ -297,20 +278,6 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				_, err := callout.Get(tlsServer.URL)
 				Expect(err).NotTo(HaveOccurred())
 			})
-
-			it("skips TLS verification when set to true on the request", func() {
-				callout := client.New()
-
-				_, err := callout.Get(tlsServer.URL, client.SkipTLSVerify(true))
-				Expect(err).NotTo(HaveOccurred())
-			})
-
-			it("prefers the value set on the client", func() {
-				callout := client.New(client.DefaultSkipTLSVerify(true))
-
-				_, err := callout.Get(tlsServer.URL, client.SkipTLSVerify(false))
-				Expect(err).To(HaveOccurred())
-			})
 		})
 	})
 
@@ -382,25 +349,6 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 
 				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
 				_, err := callout.Post(url, "")
-				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
-			})
-
-			it("returns an error if the request exceeds the request timeout", func() {
-				callout := client.New()
-
-				timeout := time.Millisecond
-				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
-				_, err := callout.Post(url, "", client.WithTimeout(timeout))
-				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
-			})
-
-			it("prefers the request timeout to the client timeout", func() {
-				requestTimeout := time.Millisecond
-				clientTimeout := requestTimeout * 100
-
-				callout := client.New(client.WithDefaultTimeout(clientTimeout))
-				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, requestTimeout*10)
-				_, err := callout.Post(url, "", client.WithTimeout(requestTimeout))
 				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
 			})
 		})
@@ -510,20 +458,6 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				_, err := callout.Post(tlsServer.URL, "")
 				Expect(err).NotTo(HaveOccurred())
 			})
-
-			it("skips TLS verification when set to true on the request", func() {
-				callout := client.New()
-
-				_, err := callout.Post(tlsServer.URL, "", client.SkipTLSVerify(true))
-				Expect(err).NotTo(HaveOccurred())
-			})
-
-			it("prefers the value set on the client", func() {
-				callout := client.New(client.DefaultSkipTLSVerify(true))
-
-				_, err := callout.Post(tlsServer.URL, "", client.SkipTLSVerify(false))
-				Expect(err).To(HaveOccurred())
-			})
 		})
 	})
 
@@ -569,25 +503,6 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 				_, err := callout.Head(url)
 				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
 			})
-
-			it("returns an error if the request exceeds the request timeout", func() {
-				callout := client.New()
-
-				timeout := time.Millisecond
-				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, timeout*10)
-				_, err := callout.Head(url, client.WithTimeout(timeout))
-				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
-			})
-
-			it("prefers the request timeout to the client timeout", func() {
-				requestTimeout := time.Millisecond
-				clientTimeout := requestTimeout * 100
-
-				callout := client.New(client.WithDefaultTimeout(clientTimeout))
-				url := fmt.Sprintf("%s/sleep?duration=%s", server.URL, requestTimeout*10)
-				_, err := callout.Head(url, client.WithTimeout(requestTimeout))
-				Expect(err).To(MatchError(ContainSubstring("context deadline exceeded")))
-			})
 		})
 
 		when("SkipTLSVerify", func() {
@@ -603,20 +518,6 @@ func testClient(t *testing.T, when spec.G, it spec.S) {
 
 				_, err := callout.Head(tlsServer.URL)
 				Expect(err).NotTo(HaveOccurred())
-			})
-
-			it("skips TLS verification when set to true on the request", func() {
-				callout := client.New()
-
-				_, err := callout.Head(tlsServer.URL, client.SkipTLSVerify(true))
-				Expect(err).NotTo(HaveOccurred())
-			})
-
-			it("prefers the value set on the client", func() {
-				callout := client.New(client.DefaultSkipTLSVerify(true))
-
-				_, err := callout.Head(tlsServer.URL, client.SkipTLSVerify(false))
-				Expect(err).To(HaveOccurred())
 			})
 		})
 	})
