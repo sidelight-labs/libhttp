@@ -107,7 +107,7 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 
 	var statusCode int
 	var body []byte
-	for i := 0; i <= requestOpts.retries; i++ {
+	for requestOpts.next() {
 		body, statusCode, err = c.doRequest(req, requestOpts.bodyWriter, requestOpts)
 		if err != nil {
 			return nil, err
@@ -136,7 +136,7 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 
 func (c *Callout) doRequest(req *http.Request, writer io.Writer, opts *requestOptions) ([]byte, int, error) {
 	if opts.tracer != nil {
-		_, span := opts.tracer.Start(opts.context, req.URL.Path)
+		_, span := opts.tracer.Start(opts.context, opts.traceSpanName(req))
 		defer span.End()
 	}
 
