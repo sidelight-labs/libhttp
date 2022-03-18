@@ -1,7 +1,8 @@
 package client
 
 import (
-	"github.com/sidelight-labs/libhttp/tracing"
+	"context"
+	"go.opentelemetry.io/otel/trace"
 	"time"
 )
 
@@ -45,8 +46,9 @@ func WithDefaultTimeout(timeout time.Duration) CalloutOption {
 	}
 }
 
-func WithDefaultTracer(tracer tracing.Tracer) CalloutOption {
+func WithDefaultTracer(tracer trace.Tracer, ctx context.Context) CalloutOption {
 	return func(c *Callout) {
 		c.defaultTracer = tracer
+		c.defaultContext = ctx
 	}
 }

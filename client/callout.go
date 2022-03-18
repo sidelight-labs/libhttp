@@ -1,11 +1,12 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	_ "github.com/golang/mock/mockgen/model"
-	"github.com/sidelight-labs/libhttp/tracing"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 	"io/ioutil"
 	"net"
@@ -13,9 +14,6 @@ import (
 	"strings"
 	"time"
 )
-
-//go:generate mockgen -destination=mocks/span.go -package=mocks github.com/sidelight-labs/libhttp/tracing Span
-//go:generate mockgen -destination=mocks/tracer.go -package=mocks github.com/sidelight-labs/libhttp/tracing Tracer
 
 const (
 	defaultTimeout             = time.Minute
@@ -31,10 +29,11 @@ type Caller interface {
 
 type Callout struct {
 	client         *http.Client
+	defaultContext context.Context
 	defaultHeaders map[string]string
 	defaultTimeout time.Duration
 	defaultRetries int
-	defaultTracer  tracing.Tracer
+	defaultTracer  trace.Tracer
 	skipTLSVerify  bool
 }
 
@@ -140,7 +139,7 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 
 func (c *Callout) doRequest(req *http.Request, writer io.Writer) ([]byte, int, error) {
 	if c.defaultTracer != nil {
-		span := c.defaultTracer.Trace(req.URL.Path)
+		_, span := c.defaultTracer.Start(c.defaultContext, req.URL.Path)
 		defer span.End()
 	}
 
