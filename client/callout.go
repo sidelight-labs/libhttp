@@ -1,9 +1,12 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	_ "github.com/golang/mock/mockgen/model"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 	"io/ioutil"
 	"net"
@@ -26,9 +29,11 @@ type Caller interface {
 
 type Callout struct {
 	client         *http.Client
+	defaultContext context.Context
 	defaultHeaders map[string]string
 	defaultTimeout time.Duration
 	defaultRetries int
+	defaultTracer  trace.Tracer
 	skipTLSVerify  bool
 }
 
@@ -76,6 +81,8 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 	requestOpts := &requestOptions{
 		headers: c.defaultHeaders,
 		retries: c.defaultRetries,
+		tracer:  c.defaultTracer,
+		context: c.defaultContext,
 	}
 
 	for _, option := range options {
@@ -101,7 +108,7 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 	var statusCode int
 	var body []byte
 	for i := 0; i <= requestOpts.retries; i++ {
-		body, statusCode, err = c.doRequest(req, requestOpts.bodyWriter)
+		body, statusCode, err = c.doRequest(req, requestOpts.bodyWriter, requestOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +134,12 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 	}
 }
 
-func (c *Callout) doRequest(req *http.Request, writer io.Writer) ([]byte, int, error) {
+func (c *Callout) doRequest(req *http.Request, writer io.Writer, opts *requestOptions) ([]byte, int, error) {
+	if opts.tracer != nil {
+		_, span := opts.tracer.Start(opts.context, req.URL.Path)
+		defer span.End()
+	}
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to make request: %w", err)

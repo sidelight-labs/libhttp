@@ -1,6 +1,8 @@
 package client
 
 import (
+	"context"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 )
 
@@ -11,6 +13,14 @@ type requestOptions struct {
 	retries    int
 	jsonValue  interface{}
 	bodyWriter io.Writer
+	tracer     trace.Tracer
+	context    context.Context
+}
+
+func UnmarshalJSONBody(v interface{}) RequestOption {
+	return func(r *requestOptions) {
+		r.jsonValue = v
+	}
 }
 
 func WithHeader(name, value string) RequestOption {
@@ -39,9 +49,10 @@ func WithRetries(retries int) RequestOption {
 	}
 }
 
-func UnmarshalJSONBody(v interface{}) RequestOption {
+func WithTracer(tracer trace.Tracer, ctx context.Context) RequestOption {
 	return func(r *requestOptions) {
-		r.jsonValue = v
+		r.tracer = tracer
+		r.context = ctx
 	}
 }
 
