@@ -136,7 +136,11 @@ func (c *Callout) buildRequestWithOptions(method string, url string, reqBody str
 
 func (c *Callout) doRequest(req *http.Request, writer io.Writer, opts *requestOptions) ([]byte, int, error) {
 	if opts.tracer != nil {
-		_, span := opts.tracer.Start(opts.context, req.URL.Path)
+		spanName := opts.spanName
+		if spanName == "" {
+			spanName = req.URL.Path
+		}
+		_, span := opts.tracer.Start(opts.context, spanName)
 		defer span.End()
 	}
 
