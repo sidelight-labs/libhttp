@@ -15,6 +15,7 @@ type requestOptions struct {
 	bodyWriter io.Writer
 	tracer     trace.Tracer
 	context    context.Context
+	spanName   string
 }
 
 func UnmarshalJSONBody(v interface{}) RequestOption {
@@ -53,6 +54,12 @@ func WithTracer(tracer trace.Tracer, ctx context.Context) RequestOption {
 	return func(r *requestOptions) {
 		r.tracer = tracer
 		r.context = ctx
+	}
+}
+
+func WithSpanName(spanName string) RequestOption {
+	return func(r *requestOptions) {
+		r.spanName = spanName
 	}
 }
 
