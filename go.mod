@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/golang/mock v1.6.0
-	github.com/onsi/gomega v1.27.7
+	github.com/onsi/gomega v1.27.8
 	github.com/sclevine/spec v1.4.0
 	github.com/sidelight-labs/libc v1.2.2
 	go.opentelemetry.io/otel/trace v1.16.0
